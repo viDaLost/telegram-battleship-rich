@@ -1,0 +1,9 @@
+node_modules/
+.wrangler/
+.dev.vars
+.env
+.DS_Store
+
+wrangler.generated.jsonc
+
+.worker-secrets.json

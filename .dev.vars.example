@@ -1,0 +1,5 @@
+BOT_TOKEN=123456:replace_me
+# Optional for local/manual deploy. CI derives a stable webhook secret from BOT_TOKEN.
+WEBHOOK_SECRET=replace_with_long_random_secret
+# Used only by local setup scripts as a safety check.
+EXPECTED_BOT_USERNAME=battles_hip_bot

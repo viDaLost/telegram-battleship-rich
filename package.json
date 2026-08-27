@@ -1,0 +1,29 @@
+{
+  "name": "telegram-battleship-rich",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:create": "wrangler d1 create telegram-battleship",
+    "db:migrate:local": "wrangler d1 migrations apply telegram-battleship --local",
+    "db:migrate:remote": "wrangler d1 migrations apply telegram-battleship --remote",
+    "webhook:set": "node scripts/set-webhook.mjs",
+    "webhook:delete": "node scripts/delete-webhook.mjs",
+    "bot:configure": "node scripts/configure-bot.mjs",
+    "secrets:prepare": "node scripts/prepare-worker-secrets.mjs",
+    "db:ensure": "node scripts/ensure-d1.mjs"
+  },
+  "devDependencies": {
+    "tsx": "4.23.12",
+    "typescript": "5.9.3",
+    "wrangler": "4.126.0",
+    "@types/node": "22.20.1"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
