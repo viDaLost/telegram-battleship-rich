@@ -1,0 +1,69 @@
+name: Bootstrap project source
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.bootstrap/**'
+      - '.github/workflows/bootstrap.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: battleship-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Check bootstrap payload
+        id: payload
+        shell: bash
+        run: |
+          if [ -f .bootstrap/part06 ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Bootstrap payload already consumed; nothing to do."
+          fi
+
+      - name: Restore project archive
+        if: steps.payload.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .bootstrap/part00 .bootstrap/part01 .bootstrap/part02 .bootstrap/part03 .bootstrap/part04 .bootstrap/part05 .bootstrap/part06 > /tmp/project.b64
+          base64 --decode /tmp/project.b64 > /tmp/project.zip
+          unzip -q /tmp/project.zip -d /tmp/project
+          test -f /tmp/project/telegram-battleship-rich/package.json
+          test -f /tmp/project/telegram-battleship-rich/src/index.ts
+          test -f /tmp/project/telegram-battleship-rich/.github/workflows/deploy.yml
+
+      - name: Install project source
+        if: steps.payload.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rsync -a --delete \
+            --exclude='.git/' \
+            --exclude='.github/workflows/bootstrap.yml' \
+            /tmp/project/telegram-battleship-rich/ ./
+          rm -rf .bootstrap
+
+      - name: Commit project
+        if: steps.payload.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Add Telegram Battleship bot source"
+          git push
