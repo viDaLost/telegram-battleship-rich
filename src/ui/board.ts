@@ -3,7 +3,7 @@ import { BOARD_SIZE, type BoardState } from "../game/types";
 import type { InputRichBlock, RichBlockTableCell, RichMessageButton, RichText } from "../telegram/types";
 import type { BattleIconTheme } from "./icons";
 import { battleIcon, shipCellIcon, shipIcon } from "./icons";
-import { bold, callbackButton, cell, disabledButton, inlineCallback } from "./rich";
+import { bold, callbackButton, cell, disabledButton, inlineCallback, marked, subscript } from "./rich";
 
 export const COLS = ["А", "Б", "В", "Г", "Д", "Е", "Ж", "З", "И", "К"] as const;
 
@@ -12,42 +12,66 @@ export interface BoardTableOptions {
   own: boolean;
   icons?: BattleIconTheme;
   directCellCallback?: (x: number, y: number) => string;
+  selectedCell?: string | undefined;
 }
 
 function missIcon(icons: BattleIconTheme): RichText {
   // The current art pack has a square water tile but no dedicated miss glyph.
-  // Use that square water tile for a confirmed miss. This also keeps the number
-  // of custom emoji entities low instead of drawing 100 animated water cells.
   return icons.miss ? battleIcon(icons, "miss") : battleIcon(icons, "water");
 }
 
-export function boardTable({ board, own, icons = {}, directCellCallback }: BoardTableOptions): InputRichBlock {
+function selectedVisual(content: RichText, isEmpty: boolean): RichText {
+  // Rich Text Chess uses a persistent marked cell to make selection obvious.
+  // For an empty sea cell, use a larger dot so the native marked background is
+  // visible during the short press pulse before the result is rendered.
+  return marked(isEmpty ? "●" : content);
+}
+
+export function boardTable({
+  board,
+  own,
+  icons = {},
+  directCellCallback,
+  selectedCell,
+}: BoardTableOptions): InputRichBlock {
   const rows: RichBlockTableCell[][] = [];
-  rows.push([cell("", true), ...COLS.map((label) => cell(bold(label), true))]);
+
+  // Keep the coordinate gutter intentionally tiny. Telegram does not expose
+  // table column widths; smaller coordinate glyphs leave more width for the 10
+  // playable columns and make them much closer to square on phones.
+  rows.push([cell("", true), ...COLS.map((label) => cell(subscript(bold(label)), true))]);
   const shots = new Set(board.shots);
 
   for (let y = 0; y < BOARD_SIZE; y += 1) {
-    const row: RichBlockTableCell[] = [cell(bold(String(y + 1)), true)];
+    const row: RichBlockTableCell[] = [cell(subscript(String(y + 1)), true)];
     for (let x = 0; x < BOARD_SIZE; x += 1) {
       const coord = { x, y };
       const key = `${x},${y}`;
       const ship = shipAt(board, coord);
       const wasShot = shots.has(key);
+      const isSelected = selectedCell === key;
 
       let content: RichText;
+      let isEmpty = false;
       if (wasShot && ship) {
         content = battleIcon(icons, isShipSunk(board, ship) ? "sunk" : "hit");
       } else if (wasShot) {
         content = missIcon(icons);
       } else if (own && ship) {
         content = shipCellIcon(icons, ship, coord);
-      } else if (directCellCallback) {
-        // Keep untouched sea as a plain glyph. Apart from being cleaner, this
-        // avoids exceeding Telegram's dynamic per-message custom emoji limit.
-        content = inlineCallback("·", directCellCallback(x, y));
       } else {
+        isEmpty = true;
         content = "·";
       }
+
+      if (isSelected) {
+        content = selectedVisual(content, isEmpty);
+      } else if (!wasShot && directCellCallback && (!own || !ship)) {
+        // RichTextButton inside a table is the same primitive used by the new
+        // Telegram chess experience. The native client supplies tap feedback.
+        content = inlineCallback(content, directCellCallback(x, y));
+      }
+
       row.push(cell(content));
     }
     rows.push(row);
@@ -58,7 +82,6 @@ export function boardTable({ board, own, icons = {}, directCellCallback }: Board
     cells: rows,
     is_bordered: true,
     is_compact: true,
-    caption: own ? "Ваши корабли" : "Радар противника",
   };
 }
 
@@ -99,7 +122,7 @@ export function radarPicker(options: RadarPickerOptions): InputRichBlock[] {
   const { selectedSector, isDisabled, sectorCallback, cellCallback, backCallback } = options;
   if (selectedSector === undefined || !SECTORS[selectedSector]) {
     return [
-      { type: "paragraph", text: [bold(options.title ?? "🎯 Быстрый прицел"), " · выберите четверть поля"] },
+      { type: "paragraph", text: [bold(options.title ?? "🎯 Резервный прицел"), " · выберите четверть поля"] },
       {
         type: "buttons",
         buttons: [0, 1].map((sector) => callbackButton(SECTORS[sector]!.label, sectorCallback(sector), "primary")),
