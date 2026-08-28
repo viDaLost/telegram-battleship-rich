@@ -39,6 +39,17 @@ export class TelegramApi {
     });
   }
 
+  sendTextMessage(chatId: number, text: string, replyToMessageId?: number): Promise<TelegramMessage> {
+    return this.call("sendMessage", {
+      chat_id: chatId,
+      text,
+      parse_mode: "HTML",
+      ...(replyToMessageId !== undefined
+        ? { reply_parameters: { message_id: replyToMessageId, allow_sending_without_reply: true } }
+        : {}),
+    });
+  }
+
   answerCallbackQuery(callbackQueryId: string, text?: string, showAlert = false): Promise<boolean> {
     return this.call("answerCallbackQuery", {
       callback_query_id: callbackQueryId,
