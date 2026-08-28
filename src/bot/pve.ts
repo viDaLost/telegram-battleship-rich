@@ -2,6 +2,7 @@ import {
   autoPlacePlayer,
   chooseShipSize,
   clearPlayerFleet,
+  formatCoord,
   manualPlace,
   playerShot,
   rotatePlacement,
@@ -12,13 +13,24 @@ import {
   startBattle,
   surrender,
 } from "../game/engine";
-import type { GameState } from "../game/types";
+import type { Coord, GameState } from "../game/types";
 import { GameRepository } from "../storage/game-repository";
 import { TelegramApi } from "../telegram/api";
 import type { CallbackQuery } from "../telegram/types";
 import type { BattleIconTheme } from "../ui/icons";
 import { renderGame } from "../ui/render";
 import { cloneGame, revisionAt, safeAnswer, safeEdit } from "./shared";
+
+const PRESS_PULSE_MS = 110;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+interface PersistOptions {
+  pulseCoord?: Coord;
+  pulseStatus?: string;
+}
 
 async function persist(
   repo: GameRepository,
@@ -27,6 +39,7 @@ async function persist(
   current: GameState,
   icons: BattleIconTheme,
   mutate: (draft: GameState) => void,
+  options: PersistOptions = {},
 ): Promise<void> {
   const draft = cloneGame(current);
   mutate(draft);
@@ -36,11 +49,26 @@ async function persist(
     await safeAnswer(api, query.id, "Поле уже обновилось — нажмите ещё раз.");
     return;
   }
+
+  // Answer first so Telegram immediately releases the pressed-button state.
   await safeAnswer(api, query.id);
-  if (query.message) await safeEdit(api, query.message.chat.id, query.message.message_id, renderGame(draft, icons));
+
+  if (!query.message) return;
+  const chatId = query.message.chat.id;
+  const messageId = query.message.message_id;
+
+  if (options.pulseCoord) {
+    const preview = cloneGame(current);
+    preview.selectedCell = `${options.pulseCoord.x},${options.pulseCoord.y}`;
+    preview.status = options.pulseStatus ?? `Выбрано ${formatCoord(options.pulseCoord)}…`;
+    await safeEdit(api, chatId, messageId, renderGame(preview, icons));
+    await delay(PRESS_PULSE_MS);
+  }
+
+  await safeEdit(api, chatId, messageId, renderGame(draft, icons));
 }
 
-function cell(parts: string[]): { x: number; y: number } | null {
+function cell(parts: string[]): Coord | null {
   const x = Number(parts[3]);
   const y = Number(parts[4]);
   return [x, y].every((n) => Number.isInteger(n) && n >= 0 && n < 10) ? { x, y } : null;
@@ -87,13 +115,21 @@ export async function handlePveCallback(
     if (action === "c") {
       const coord = cell(parts);
       if (!coord) return safeAnswer(api, query.id, "Некорректная клетка.");
-      return persist(repo, api, query, state, icons, (draft) => {
-        void manualPlace(draft, coord);
-        draft.selectedRow = undefined;
-        draft.selectedSector = undefined;
-      });
+      return persist(
+        repo,
+        api,
+        query,
+        state,
+        icons,
+        (draft) => {
+          void manualPlace(draft, coord);
+          draft.selectedRow = undefined;
+          draft.selectedSector = undefined;
+        },
+        { pulseCoord: coord, pulseStatus: `Позиция ${formatCoord(coord)}…` },
+      );
     }
-    // Old v0.2 messages can still emit row-picker callbacks.
+    // Old messages can still emit row-picker callbacks.
     if (action === "y") {
       if (parts[3] === "x") return persist(repo, api, query, state, icons, (draft) => { draft.selectedRow = undefined; });
       const row = Number(parts[3]);
@@ -115,7 +151,15 @@ export async function handlePveCallback(
     if (action === "c" || action === "s") {
       const coord = cell(parts);
       if (!coord) return safeAnswer(api, query.id, "Некорректная клетка.");
-      return persist(repo, api, query, state, icons, (draft) => playerShot(draft, coord));
+      return persist(
+        repo,
+        api,
+        query,
+        state,
+        icons,
+        (draft) => playerShot(draft, coord),
+        { pulseCoord: coord, pulseStatus: `🎯 ${formatCoord(coord)} — огонь…` },
+      );
     }
     if (action === "v") {
       const view = parts[3] === "o" ? "own" : "enemy";
