@@ -17,9 +17,9 @@ function isRadar(state: GameState): boolean {
 
 function modeButton(state: GameState, phase: "p" | "b"): RichMessageButton {
   if (isRadar(state)) {
-    return callbackButton("⚡ Прямые клетки · beta", `${phase}:${state.revision}:m:d`, "link");
+    return callbackButton("🎯 Нажимать по полю", `${phase}:${state.revision}:m:d`, "primary");
   }
-  return callbackButton("📱 Радар для iPhone", `${phase}:${state.revision}:m:r`, "primary");
+  return callbackButton("📱 Резервный прицел", `${phase}:${state.revision}:m:r`, "link");
 }
 
 function gameRadar(state: GameState, phase: "p" | "b"): InputRichBlock[] {
@@ -28,7 +28,7 @@ function gameRadar(state: GameState, phase: "p" | "b"): InputRichBlock[] {
   return radarPicker({
     selectedSector: state.selectedSector,
     ...(disabled ? { isDisabled: disabled } : {}),
-    title: phase === "b" ? "🎯 Быстрый прицел" : "📍 Точка установки",
+    title: phase === "b" ? "🎯 Резервный прицел" : "📍 Резервная установка",
     sectorCallback: (sector) => `${phase}:${state.revision}:g:${sector}`,
     cellCallback: (x, y) => `${phase}:${state.revision}:c:${x}:${y}`,
     backCallback: `${phase}:${state.revision}:g:x`,
@@ -64,7 +64,7 @@ export function renderHome(options: HomeOptions): InputRichMessage {
     { type: "heading", size: 2, text: "⚓ Морской бой" },
     {
       type: "paragraph",
-      text: "Классический бой 10×10 полностью внутри Telegram. Можно играть против компьютера или отправить другу персональную ссылку на комнату.",
+      text: "Классический бой 10×10 полностью внутри Telegram. Клетки поля работают как встроенные Rich Text buttons — без Mini App.",
     },
     { type: "divider" },
     {
@@ -81,7 +81,7 @@ export function renderHome(options: HomeOptions): InputRichMessage {
       buttons: [callbackButton("📖 Правила", "m:rules", "link")],
       align: "center",
     },
-    { type: "footer", text: "Rich Messages · Bot API 10.3 · iPhone-safe radar controls" },
+    { type: "footer", text: "Rich Messages · direct table controls · radar fallback" },
   ]);
 }
 
@@ -92,11 +92,11 @@ export function renderRules(): InputRichMessage {
     { type: "paragraph", text: "Корабли не касаются друг друга даже по диагонали. Попадание даёт дополнительный выстрел, промах передаёт ход." },
     {
       type: "paragraph",
-      text: [bold("На iPhone: "), "выберите четверть радара, затем нужную клетку 5×5. Это использует RichBlockButtons вне таблицы и не зависит от текущего бага Telegram iOS с кнопками внутри table-cell."],
+      text: [bold("Управление: "), "нажимайте непосредственно на клетку поля. Выбранная клетка кратко подсвечивается перед результатом — как состояние выбора в Rich Text Chess."],
     },
     {
       type: "paragraph",
-      text: [bold("Android/Desktop: "), "можно включить режим «Прямые клетки · beta» и стрелять непосредственно по таблице."],
+      text: [bold("Fallback: "), "если конкретная версия Telegram плохо обрабатывает кнопку внутри таблицы, включите «Резервный прицел»."],
     },
     { type: "buttons", buttons: [callbackButton("← Назад", "m:home", "primary")], align: "center" },
   ]);
@@ -129,7 +129,13 @@ export function renderPlacement(state: GameState, icons: BattleIconTheme = {}): 
       type: "paragraph",
       text: ["Сейчас: ", bold(`${state.selectedSize}-палубный`), " · ", italic(state.orientation === "H" ? "горизонтально" : "вертикально")],
     },
-    boardTable({ board: state.playerBoard, own: true, icons, ...(directCellCallback ? { directCellCallback } : {}) }),
+    boardTable({
+      board: state.playerBoard,
+      own: true,
+      icons,
+      selectedCell: state.selectedCell,
+      ...(directCellCallback ? { directCellCallback } : {}),
+    }),
     { type: "paragraph", text: [bold("Флот: "), fleetDock(state.playerBoard, icons)] },
     { type: "buttons", buttons: sizeButtons, align: "center" },
     ...gameRadar(state, "p"),
@@ -149,7 +155,7 @@ export function renderPlacement(state: GameState, icons: BattleIconTheme = {}): 
 
 export function renderBattle(state: GameState, icons: BattleIconTheme = {}): InputRichMessage {
   const own = state.view === "own";
-  const title = own ? "🚢 Мой флот" : "🎯 Радар противника";
+  const title = own ? "🚢 Мой флот" : "🎯 Поле противника";
   const turnText = state.turn === "player" ? "Ваш ход" : "Ход противника";
   const directCellCallback =
     !own && !isRadar(state) && state.turn === "player"
@@ -176,6 +182,7 @@ export function renderBattle(state: GameState, icons: BattleIconTheme = {}): Inp
       board: own ? state.playerBoard : state.enemyBoard,
       own,
       icons,
+      selectedCell: state.selectedCell,
       ...(directCellCallback ? { directCellCallback } : {}),
     }),
     { type: "paragraph", text: [bold("Ваш флот: "), fleetDock(state.playerBoard, icons)] },
@@ -193,8 +200,8 @@ export function renderBattle(state: GameState, icons: BattleIconTheme = {}): Inp
       text: own
         ? "Ваши корабли скрыты от соперника."
         : isRadar(state)
-          ? "Радар 5×5 использует обычные Rich Message buttons — они надёжно нажимаются на iPhone."
-          : "Прямые клетки работают на Android/Desktop; поддержка Apple зависит от Telegram.",
+          ? "Резервный режим включён. Вернуться к прямым клеткам можно кнопкой ниже."
+          : "Нажмите клетку прямо на поле. Telegram сам даёт кнопке нативный touch-feedback.",
     },
   ]);
 }
