@@ -23,9 +23,14 @@ export function createRoomCode(): string {
   return Array.from(bytes, (value) => alphabet[value % alphabet.length]).join("");
 }
 
-export async function safeAnswer(api: TelegramApi, callbackId: string, text?: string): Promise<void> {
+export async function safeAnswer(
+  api: TelegramApi,
+  callbackId: string,
+  text?: string,
+  showAlert = false,
+): Promise<void> {
   try {
-    await api.answerCallbackQuery(callbackId, text);
+    await api.answerCallbackQuery(callbackId, text, showAlert);
   } catch (error) {
     console.error("answerCallbackQuery failed", error);
   }
