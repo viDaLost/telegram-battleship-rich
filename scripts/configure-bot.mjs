@@ -28,14 +28,14 @@ if (me.username !== expectedUsername) {
 await call('setMyCommands', {
   commands: [
     { command: 'start', description: 'Открыть Морской бой' },
-    { command: 'new', description: 'Начать новую игру' },
+    { command: 'new', description: 'Начать бой с ботом' },
     { command: 'help', description: 'Правила игры' },
   ],
 });
 
 await call('setMyDescription', {
   description:
-    '⚓ Классический Морской бой 10×10 прямо в Telegram. Расставьте флот, выбирайте клетки и сражайтесь с ботом без Mini App.',
+    '⚓ Классический Морской бой 10×10 прямо в Telegram. Сражайтесь с ботом или отправьте другу ссылку на сетевой бой — без Mini App.',
 });
 
 await call('setMyShortDescription', {

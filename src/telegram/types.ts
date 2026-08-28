@@ -3,7 +3,9 @@ export type RichText = string | RichText[] | RichTextEntity;
 export type RichTextEntity =
   | { type: "bold"; text: RichText }
   | { type: "italic"; text: RichText }
+  | { type: "underline"; text: RichText }
   | { type: "marked"; text: RichText }
+  | { type: "custom_emoji"; custom_emoji_id: string; alternative_text: string }
   | { type: "button"; button: RichMessageButton };
 
 export interface RichMessageButton {
@@ -11,6 +13,7 @@ export interface RichMessageButton {
   style?: "danger" | "success" | "primary" | "link";
   callback_data?: string;
   url?: string;
+  switch_inline_query?: string;
   disabled?: Record<string, never>;
 }
 
@@ -28,6 +31,8 @@ export type InputRichBlock =
   | { type: "paragraph"; text: RichText }
   | { type: "footer"; text: RichText }
   | { type: "divider" }
+  | { type: "pullquote"; text: RichText; credit?: RichText }
+  | { type: "details"; summary: RichText; blocks: InputRichBlock[]; is_open?: true }
   | {
       type: "table";
       cells: RichBlockTableCell[][];
@@ -50,6 +55,8 @@ export interface InputRichMessage {
 export interface TelegramUser {
   id: number;
   first_name?: string;
+  last_name?: string;
+  username?: string;
 }
 
 export interface TelegramMessage {

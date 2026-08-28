@@ -6,11 +6,14 @@ import {
   createGame,
   manualPlace,
   playerShot,
+  selectSector,
   setInteractionMode,
   startBattle,
 } from "../src/game/engine";
 import { randomFleet } from "../src/game/placement";
 import type { BoardState } from "../src/game/types";
+import { createMatch, joinMatch, matchShot, setReady } from "../src/pvp/engine";
+import { renderMatch } from "../src/pvp/render";
 import { renderGame } from "../src/ui/render";
 
 function seeded(seed = 123456789): () => number {
@@ -38,6 +41,11 @@ function assertShipsDoNotTouch(board: BoardState): void {
   }
 }
 
+function assertButtonLimits(blocks: ReturnType<typeof renderGame>["blocks"]): void {
+  const rows = blocks.filter((block) => block.type === "buttons");
+  assert.ok(rows.every((block) => block.type === "buttons" && block.buttons.length <= 8));
+}
+
 test("random fleets are complete, non-overlapping and non-touching", () => {
   for (let seed = 1; seed <= 100; seed += 1) {
     const board = randomFleet(seeded(seed));
@@ -63,24 +71,36 @@ test("battle cannot start before full fleet", () => {
   assert.equal(state.phase, "placing");
 });
 
-test("compatible mode renders a 10x10 board and button rows within Telegram limits", () => {
+test("iPhone-safe radar renders four sectors and then a 5x5 button grid", () => {
   const state = createGame(2, Date.now(), seeded(8));
   autoPlacePlayer(state, seeded(9));
   assert.equal(startBattle(state), true);
-  assert.equal(state.interactionMode, "picker");
+  assert.equal(state.interactionMode, "radar");
 
-  const rich = renderGame(state);
+  let rich = renderGame(state);
   const table = rich.blocks.find((block) => block.type === "table");
   assert.ok(table && table.type === "table");
-  assert.equal(table.cells.length, 11); // header + 10 rows
-  assert.ok(table.cells.every((row) => row.length === 11)); // row header + 10 columns
+  assert.equal(table.cells.length, 11);
+  assert.ok(table.cells.every((row) => row.length === 11));
+  assertButtonLimits(rich.blocks);
 
-  const buttonRows = rich.blocks.filter((block) => block.type === "buttons");
-  assert.ok(buttonRows.length > 0);
-  assert.ok(buttonRows.every((block) => block.type === "buttons" && block.buttons.length <= 8));
+  const sectorButtons = rich.blocks
+    .filter((block) => block.type === "buttons")
+    .flatMap((block) => (block.type === "buttons" ? block.buttons : []))
+    .filter((button) => button.callback_data?.includes(":g:"));
+  assert.equal(sectorButtons.length, 4);
+
+  selectSector(state, 0);
+  rich = renderGame(state);
+  const coordinateButtons = rich.blocks
+    .filter((block) => block.type === "buttons")
+    .flatMap((block) => (block.type === "buttons" ? block.buttons : []))
+    .filter((button) => button.callback_data?.includes(":c:"));
+  assert.equal(coordinateButtons.length, 25);
+  assertButtonLimits(rich.blocks);
 });
 
-test("direct mode embeds callback buttons in enemy table cells", () => {
+test("direct mode still embeds callback buttons in enemy table cells", () => {
   const state = createGame(3, Date.now(), seeded(10));
   autoPlacePlayer(state, seeded(11));
   assert.equal(startBattle(state), true);
@@ -97,6 +117,44 @@ test("direct mode embeds callback buttons in enemy table cells", () => {
     }),
   );
   assert.equal(hasInlineButton, true);
+});
+
+test("network room starts when both players are ready and alternates turn after a miss", () => {
+  const match = createMatch("ABCDEFGH", 10, "Host", Date.now(), seeded(20));
+  assert.equal(joinMatch(match, 20, "Guest", seeded(21)), true);
+  assert.equal(setReady(match, 10, true), true);
+  assert.equal(setReady(match, 20, true), true);
+  assert.equal(match.phase, "playing");
+  assert.equal(match.turnUserId, 10);
+
+  let miss: { x: number; y: number } | undefined;
+  for (let y = 0; y < 10 && !miss; y += 1) {
+    for (let x = 0; x < 10; x += 1) {
+      if (!match.guest!.board.ships.some((ship) => ship.cells.includes(`${x},${y}`))) {
+        miss = { x, y };
+        break;
+      }
+    }
+  }
+  assert.ok(miss);
+  const result = matchShot(match, 10, miss);
+  assert.equal(result?.kind, "miss");
+  assert.equal(match.turnUserId, 20);
+});
+
+test("network match rendering stays within RichBlockButtons limits", () => {
+  const match = createMatch("ABCDEFGH", 10, "Host", Date.now(), seeded(30));
+  joinMatch(match, 20, "Guest", seeded(31));
+  setReady(match, 10, true);
+  setReady(match, 20, true);
+  match.host.selectedSector = 0;
+  const rich = renderMatch(match, 10);
+  const rows = rich.blocks.filter((block) => block.type === "buttons");
+  assert.ok(rows.every((block) => block.type === "buttons" && block.buttons.length <= 8));
+  const coordinateButtons = rows
+    .flatMap((block) => (block.type === "buttons" ? block.buttons : []))
+    .filter((button) => button.callback_data?.includes(":shot:"));
+  assert.equal(coordinateButtons.length, 25);
 });
 
 test("seeded full games always terminate", () => {

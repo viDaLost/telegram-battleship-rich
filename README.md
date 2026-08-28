@@ -1,193 +1,193 @@
 # ⚓ Telegram Battleship — Rich Messages
 
-**Целевой бот:** [@battles_hip_bot](https://t.me/battles_hip_bot)
+**Бот:** https://t.me/battles_hip_bot
 
-Классический «Морской бой» 10×10, работающий нативно внутри Telegram через Rich Messages Bot API 10.3. Mini App и WebView не нужны.
+Классический «Морской бой» 10×10 внутри одного Telegram Rich Message. Без Mini App/WebView. Backend — Cloudflare Worker + D1, production deploy — GitHub Actions.
 
 ## Что реализовано
 
-- поле 10×10 через `InputRichBlockTable`;
-- два режима управления:
-  - **📱 Совместимый** — по умолчанию: строка → столбец через `InputRichBlockButtons` вне таблицы;
-  - **⚡ Прямые клетки (beta)** — выстрел одним нажатием по `RichTextButton` внутри клетки таблицы;
-- классический флот: 1×4, 2×3, 3×2, 4×1;
+- PvE против AI `hunt/target`;
+- PvP по персональной deep-link комнате `t.me/battles_hip_bot?start=join_<CODE>`;
+- кнопка **«📨 Отправить вызов другу»** через Telegram share flow;
+- отдельное приватное поле для каждого участника PvP;
+- синхронное обновление сообщений обоих игроков после выстрела;
+- классический флот `1×4, 2×3, 3×2, 4×1`;
+- попадание даёт дополнительный ход, промах передаёт ход;
 - корабли не соприкасаются даже по диагонали;
-- ручная и автоматическая расстановка;
-- попадание даёт дополнительный ход;
-- периметр потопленного корабля автоматически помечается проверенным;
-- AI `hunt/target`: после попадания ищет продолжение корабля и не выбирает выстрел из скрытых координат флота;
-- переключение «Поле противника / Мой флот»;
-- сдача и новая игра;
-- одно игровое Telegram-сообщение обновляется через `editMessageText + rich_message`;
-- защита от двойных и устаревших нажатий через `revision` + optimistic CAS в D1;
-- автоматическое восстановление UI, если Telegram повторно прислал callback после неудачного редактирования сообщения;
-- webhook с проверкой `X-Telegram-Bot-Api-Secret-Token`;
-- партии доступны только в личном чате с ботом;
-- Cloudflare Workers + D1;
-- GitHub Actions: тест → найти/создать D1 → миграция → deploy с Worker secrets → настройка Telegram → webhook → health check.
+- D1 optimistic CAS защищает от двойных/устаревших callback;
+- Rich Message table 10×10;
+- iPhone-safe **Radar 5×5** для выстрелов и ручной расстановки;
+- beta direct-grid для Android/Desktop;
+- `RichTextCustomEmoji` theme hooks для кастомных кораблей, попаданий и воды.
 
-## Важный нюанс Telegram на Apple
+## Почему на iPhone не используется прямой tap по таблице
 
-Bot API 10.3 добавил `RichMessageButton`, `RichTextButton` и `InputRichBlockButtons`. Технически это позволяет сделать кликабельную таблицу 10×10.
+Bot API 10.3 (24 Aug 2026) добавил `RichMessageButton`, `RichTextButton`, `RichBlockButtons`/`InputRichBlockButtons` и `is_compact` для Rich tables. Формально это позволяет поместить callback button в каждую клетку 10×10.
 
-Однако на момент разработки существует открытый баг Telegram iOS/macOS: кнопки, помещённые **внутрь ячеек Rich Message table**, отображаются, но могут не получать нажатия. При этом кнопки **вне таблицы** работают.
+Но в Telegram iOS/macOS на момент разработки есть открытый client bug: `RichTextButton` внутри table cell рендерится, но tap может не отправлять `callback_query`. На Android/Desktop те же кнопки работают.
 
-Поэтому production-режим по умолчанию — **Совместимый**: поле остаётся красивой таблицей 10×10, а координата выбирается двумя быстрыми нажатиями — сначала строка, затем столбец. Пользователь может вручную включить «Прямые клетки (beta)» на клиентах, где это уже работает.
+Поэтому production default — **Radar**:
 
-Ссылки:
+1. пользователь видит полное поле 10×10;
+2. выбирает одну из 4 четвертей;
+3. бот показывает 25 обычных `RichBlockButtons` как компактную 5×5 сетку;
+4. tap по `А1`, `Б1` и т.д. выполняет выстрел.
+
+Эти кнопки находятся **вне таблицы**, поэтому не попадают под Apple table hit-testing bug. Все button rows содержат максимум 5 кнопок при лимите Telegram 8.
+
+Direct-grid остаётся доступным как beta режим для клиентов, где table-cell buttons работают.
+
+Полезные ссылки:
 
 - https://core.telegram.org/bots/api
-- https://core.telegram.org/bots/api-changelog
+- https://core.telegram.org/bots/api-changelog#august-24-2026
 - https://github.com/TelegramMessenger/Telegram-iOS/issues/2299
+
+## PvP flow
+
+```text
+Игрок A
+  ↓ «Играть с другом»
+Room ABCD1234
+  ↓ share link
+Игрок B → /start join_ABCD1234
+  ↓
+оба получают приватную расстановку
+  ↓ Ready / Ready
+Battle
+  ↓
+каждый callback → D1 CAS → edit обоих Rich Messages
+```
+
+Комната хранится в `pvp_matches`, связь пользователя с текущей комнатой — в `pvp_members`. Callback data содержит code + revision, поэтому старые кнопки не могут случайно изменить новую версию боя.
+
+## Кастомные корабли как фигуры в Rich Chess
+
+Правильный механизм — **Telegram Custom Emoji + `RichTextCustomEmoji`**. RichMessageButton также может содержать custom emoji в `text`.
+
+Важное отличие от шахмат: шахматная фигура занимает 1 клетку, а корабль занимает 1–4. Поэтому один emoji на корабль визуально не склеит корпус. Рендерер уже поддерживает сегментную схему:
+
+```text
+ship_h_bow   ship_h_mid   ship_h_stern
+ship_v_bow
+ship_v_mid
+ship_v_stern
+ship_single
+```
+
+Плюс отдельные иконки класса корабля для дока:
+
+```text
+ship4  ship3  ship2  ship1
+```
+
+И состояния поля:
+
+```text
+water  miss  hit  sunk
+```
+
+Итого оптимальный pack — 15 custom emoji. Для static custom emoji Telegram использует квадрат `100×100` с прозрачностью. Для максимально «шахматного» вида стоит нарисовать bow/middle/stern так, чтобы соседние 100×100 glyphs визуально продолжали корпус.
+
+### Ограничение Telegram Premium
+
+Bot API разрешает custom emoji в сообщениях бота, если бот имеет соответствующее право — в частности, для сообщений напрямую в private/group/supergroup это доступно, когда **владелец бота имеет Telegram Premium** (либо бот удовлетворяет альтернативному условию Telegram для purchased additional usernames).
+
+### Подключение pack к Worker
+
+После создания custom emoji pack получаем `custom_emoji_id` каждого элемента и добавляем GitHub Actions secret `SHIP_EMOJI_IDS`:
+
+```json
+{
+  "ship4": "...",
+  "ship3": "...",
+  "ship2": "...",
+  "ship1": "...",
+  "ship_h_bow": "...",
+  "ship_h_mid": "...",
+  "ship_h_stern": "...",
+  "ship_v_bow": "...",
+  "ship_v_mid": "...",
+  "ship_v_stern": "...",
+  "ship_single": "...",
+  "water": "...",
+  "miss": "...",
+  "hit": "...",
+  "sunk": "..."
+}
+```
+
+Без этого secret бот использует лёгкие Unicode fallbacks и продолжает работать.
+
+## Rich Message возможности, которые используются
+
+- `InputRichBlockTable` — полное поле 10×10; Telegram допускает до 20 колонок;
+- `is_compact` — уменьшенные table cell paddings;
+- `InputRichBlockButtons` — Radar, меню и действия, максимум 8 buttons в row;
+- `RichMessageButton.callback_data` — игровые действия, 1–64 bytes;
+- `RichMessageButton.url` — отправка PvP invite через Telegram share URL;
+- `RichTextCustomEmoji` — кастомная графика клеток/кораблей;
+- `RichBlockDetails` — сворачиваемая легенда, чтобы интерфейс не разрастался;
+- headings, pull quotes, dividers, footer — визуальная иерархия статуса боя.
+
+Мы сознательно **не** используем photo/video blocks на каждом ходе: медиа утяжелило бы edit path и не даёт преимуществ для интерактивной 10×10 сетки.
 
 ## Архитектура
 
 ```text
-Telegram
-   │ webhook + secret token
-   ▼
+Telegram Bot API 10.3
+        │ webhook
+        ▼
 Cloudflare Worker
-   ├── Telegram adapter
-   ├── callback router
-   ├── Rich Message renderer
-   ├── Battleship game engine
-   ├── AI hunt/target
-   └── D1 repository (optimistic CAS)
-            │
-            ▼
-       Cloudflare D1
+ ├── Telegram transport
+ ├── PvE engine + AI
+ ├── PvP match engine
+ ├── Rich Message renderer
+ ├── Radar controller
+ └── Custom Emoji theme
+        │
+        ▼
+Cloudflare D1
+ ├── games
+ ├── pvp_matches
+ └── pvp_members
 ```
 
-Game engine не зависит от Telegram/Cloudflare и тестируется отдельно.
+## Deploy
 
-## Рекомендуемый deploy: GitHub Actions
-
-После первичной настройки каждый push в `main` автоматически обновляет бота. D1 вручную создавать не нужно: workflow сначала ищет базу `telegram-battleship`, а если её нет — создаёт через официальный Cloudflare D1 API.
-
-### 1. Создать Cloudflare API Token
-
-Токен должен иметь права:
+Secrets already required by CI:
 
 ```text
-Workers Scripts Write
-D1 Write
-```
-
-Не коммитьте токен и не отправляйте его в чаты. Также скопируйте **Cloudflare Account ID**.
-
-### 2. Добавить GitHub Actions Secrets
-
-В репозитории: `Settings → Secrets and variables → Actions → New repository secret`.
-
-Нужны только три secrets:
-
-```text
-CLOUDFLARE_API_TOKEN
-CLOUDFLARE_ACCOUNT_ID
 BOT_TOKEN
+CLOUDFLARE_ACCOUNT_ID
+CLOUDFLARE_API_TOKEN
 ```
 
-`BOT_TOKEN` — токен именно `@battles_hip_bot` от @BotFather.
-
-Отдельный `WEBHOOK_SECRET` в GitHub создавать не требуется: CI детерминированно выводит его через SHA-256 из `BOT_TOKEN`, загружает как Cloudflare Worker Secret и использует то же значение при `setWebhook`. Сам токен при этом нигде не раскрывается. При ручном deploy можно задать собственный `WEBHOOK_SECRET`.
-
-Ни `BOT_TOKEN`, ни Cloudflare API token не нужно вставлять в исходный код.
-
-### 3. Запустить workflow
-
-Workflow находится в:
+Optional:
 
 ```text
-.github/workflows/deploy.yml
+SHIP_EMOJI_IDS
 ```
 
-Он автоматически:
+Workflow `.github/workflows/deploy.yml` performs:
 
-1. устанавливает зависимости;
-2. запускает TypeScript typecheck;
-3. запускает тесты игрового движка;
-4. через Cloudflare API находит существующую D1 `telegram-battleship` или создаёт её;
-5. генерирует временный `wrangler.generated.jsonc` с реальным D1 UUID;
-6. применяет D1 migrations;
-7. выводит стабильный `WEBHOOK_SECRET` из `BOT_TOKEN` через SHA-256 и деплоит Worker вместе с обоими secrets через Wrangler `--secrets-file`;
-8. проверяет через `getMe`, что токен принадлежит именно `@battles_hip_bot`;
-9. задаёт `/start`, `/new`, `/help`, описание и short description;
-10. устанавливает Telegram webhook;
-11. проверяет `/health` опубликованного Worker.
+1. install;
+2. TypeScript check;
+3. tests;
+4. find/create D1;
+5. all D1 migrations;
+6. Worker deploy with secrets;
+7. verify token belongs to `@battles_hip_bot`;
+8. configure bot profile/commands;
+9. set webhook;
+10. `/health` check.
 
-`wrangler.generated.jsonc` и временный `.worker-secrets.json` не коммитятся. Файл с secrets удаляется с GitHub-hosted runner после deploy.
+Every push to `main` deploys production.
 
-## Ручной deploy
-
-Если GitHub Actions не используется:
+## Local checks
 
 ```bash
 npm install
 npm run typecheck
 npm test
-npx wrangler login
-npm run db:create
 ```
-
-После `db:create` вставьте полученный D1 `database_id` в локальную копию `wrangler.jsonc` вместо `REPLACE_WITH_D1_DATABASE_ID`, затем:
-
-```bash
-npm run db:migrate:remote
-npx wrangler secret put BOT_TOKEN
-npx wrangler secret put WEBHOOK_SECRET
-npm run deploy
-```
-
-Настройка бота:
-
-```bash
-BOT_TOKEN='...' npm run bot:configure
-```
-
-Webhook:
-
-```bash
-BOT_TOKEN='...' WEBHOOK_SECRET='...' npm run webhook:set -- https://YOUR-WORKER.workers.dev
-```
-
-## Локальная разработка
-
-Скопируйте `.dev.vars.example` в `.dev.vars` и подставьте локальные secrets. `.dev.vars` игнорируется Git.
-
-```bash
-npm install
-npm run typecheck
-npm test
-npm run db:migrate:local
-npm run dev
-```
-
-Health check:
-
-```text
-GET /health
-```
-
-Telegram webhook endpoint:
-
-```text
-POST /telegram/webhook
-```
-
-## Структура
-
-```text
-.github/workflows/deploy.yml   CI/CD
-migrations/                    D1 schema
-scripts/                       deploy / Bot API helpers
-src/game/                      чистый game engine + AI
-src/storage/                   D1 repository
-src/telegram/                  Bot API transport/types
-src/ui/                        Rich Message renderer
-tests/                         game-engine tests
-wrangler.jsonc                 Worker config template
-```
-
-## Следующие версии
-
-Текущее ядро — PvE против компьютера. Архитектура допускает следующий слой: PvP по invite-ссылке/коду комнаты, отдельные приватные представления флота и, при необходимости, ephemeral messages для группового сценария.

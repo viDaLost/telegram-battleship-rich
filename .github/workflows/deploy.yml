@@ -45,6 +45,7 @@ jobs:
       - name: Prepare Worker secrets
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          SHIP_EMOJI_IDS: ${{ secrets.SHIP_EMOJI_IDS }}
         run: node scripts/prepare-worker-secrets.mjs
 
       - name: Deploy Worker and apply D1 migrations

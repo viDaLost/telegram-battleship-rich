@@ -20,8 +20,9 @@ export function createGame(userId: number, now = Date.now(), rng: Rng = Math.ran
     selectedSize: 4,
     orientation: "H",
     view: "own",
-    interactionMode: "picker",
+    interactionMode: "radar",
     selectedRow: undefined,
+    selectedSector: undefined,
     turn: "player",
     status: "Расставьте флот вручную или нажмите «Авто».",
     createdAt: now,
@@ -39,6 +40,7 @@ export function autoPlacePlayer(state: GameState, rng: Rng = Math.random): void 
   state.playerBoard = randomFleet(rng);
   state.view = "own";
   state.selectedRow = undefined;
+  state.selectedSector = undefined;
   state.status = "Флот расставлен. Можно начинать бой.";
 }
 
@@ -46,6 +48,7 @@ export function clearPlayerFleet(state: GameState): void {
   state.playerBoard = emptyBoard();
   state.selectedSize = 4;
   state.selectedRow = undefined;
+  state.selectedSector = undefined;
   state.status = "Поле очищено. Расставьте корабли заново.";
 }
 
@@ -90,11 +93,12 @@ export function startBattle(state: GameState): boolean {
   state.phase = "playing";
   state.view = "enemy";
   state.selectedRow = undefined;
+  state.selectedSector = undefined;
   state.turn = "player";
   state.status =
     state.interactionMode === "direct"
       ? "Ваш ход. Нажмите клетку на поле противника."
-      : "Ваш ход. Выберите строку, затем столбец.";
+      : "Ваш ход. Выберите сектор радара, затем клетку.";
   return true;
 }
 
@@ -127,6 +131,7 @@ function runAiTurn(state: GameState, rng: Rng): string {
       state.turn = "ai";
       state.view = "own";
       state.selectedRow = undefined;
+      state.selectedSector = undefined;
       return `${events.join(" ")} Поражение.`;
     }
 
@@ -134,6 +139,7 @@ function runAiTurn(state: GameState, rng: Rng): string {
       state.turn = "player";
       state.view = "enemy";
       state.selectedRow = undefined;
+      state.selectedSector = undefined;
       return `${events.join(" ")} Теперь ваш ход.`;
     }
   }
@@ -146,6 +152,7 @@ export function playerShot(state: GameState, coord: Coord, rng: Rng = Math.rando
 
   const result = fireAt(state.enemyBoard, coord);
   state.selectedRow = undefined;
+  state.selectedSector = undefined;
   state.status = describeShot("Вы", result);
 
   if (result.kind === "repeat") return;
@@ -168,15 +175,25 @@ export function playerShot(state: GameState, coord: Coord, rng: Rng = Math.rando
 export function setView(state: GameState, view: "enemy" | "own"): void {
   state.view = view;
   state.selectedRow = undefined;
+  state.selectedSector = undefined;
 }
 
 export function setInteractionMode(state: GameState, mode: InteractionMode): void {
-  state.interactionMode = mode;
+  state.interactionMode = mode === "picker" ? "radar" : mode;
   state.selectedRow = undefined;
+  state.selectedSector = undefined;
   state.status =
     mode === "direct"
-      ? "Прямой режим: нажимайте клетки прямо на поле. На некоторых Apple-клиентах Telegram он пока может не работать."
-      : "Совместимый режим: сначала выберите строку, затем столбец.";
+      ? "Прямой режим: нажимайте клетки прямо на поле. На Apple-клиентах Telegram кнопки внутри таблиц пока могут не работать."
+      : "Радар: выберите четверть поля, затем клетку на компактной панели 5×5.";
+}
+
+export function selectSector(state: GameState, sector: number | undefined): boolean {
+  if (sector !== undefined && (!Number.isInteger(sector) || sector < 0 || sector > 3)) return false;
+  state.selectedSector = sector;
+  state.selectedRow = undefined;
+  state.status = sector === undefined ? "Выберите сектор радара." : "Сектор выбран. Нажмите клетку для выстрела.";
+  return true;
 }
 
 export function selectRow(state: GameState, row: number): boolean {
@@ -192,6 +209,7 @@ export function surrender(state: GameState): void {
   state.winner = "ai";
   state.view = "own";
   state.selectedRow = undefined;
+  state.selectedSector = undefined;
   state.status = "Вы сдались. Игра окончена.";
 }
 

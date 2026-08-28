@@ -22,9 +22,15 @@ try {
 }
 
 const target = new URL("../.worker-secrets.json", import.meta.url);
+const shipEmojiIds = process.env.SHIP_EMOJI_IDS?.trim();
+const secrets = {
+  BOT_TOKEN: token,
+  WEBHOOK_SECRET: webhookSecret,
+  ...(shipEmojiIds ? { SHIP_EMOJI_IDS: shipEmojiIds } : {}),
+};
 await writeFile(
   target,
-  `${JSON.stringify({ BOT_TOKEN: token, WEBHOOK_SECRET: webhookSecret })}\n`,
+  `${JSON.stringify(secrets)}\n`,
   { mode: 0o600 },
 );
 await chmod(target, 0o600);

@@ -3,3 +3,6 @@ BOT_TOKEN=123456:replace_me
 WEBHOOK_SECRET=replace_with_long_random_secret
 # Used only by local setup scripts as a safety check.
 EXPECTED_BOT_USERNAME=battles_hip_bot
+
+# Optional JSON map with RichTextCustomEmoji ids. See README.
+# SHIP_EMOJI_IDS={"ship4":"...","ship3":"...","ship2":"...","ship1":"...","ship_h_bow":"...","ship_h_mid":"...","ship_h_stern":"...","ship_v_bow":"...","ship_v_mid":"...","ship_v_stern":"...","ship_single":"...","water":"...","miss":"...","hit":"...","sunk":"..."}

@@ -5,7 +5,11 @@ export type Orientation = "H" | "V";
 export type Phase = "placing" | "playing" | "finished";
 export type ViewMode = "enemy" | "own";
 export type Winner = "player" | "ai";
-export type InteractionMode = "picker" | "direct";
+/**
+ * `picker` is kept only for backwards compatibility with games persisted by v0.2.
+ * New games use `radar`, which never relies on buttons inside table cells on Apple clients.
+ */
+export type InteractionMode = "radar" | "direct" | "picker";
 
 export interface Coord {
   x: number;
@@ -34,9 +38,12 @@ export interface GameState {
   orientation: Orientation;
   view: ViewMode;
   interactionMode: InteractionMode;
+  /** Legacy two-step picker state. Kept so old D1 rows remain readable. */
   selectedRow: number | undefined;
+  /** 0..3 quadrant used by the iOS-safe 5×5 radar control. */
+  selectedSector?: number | undefined;
   turn: "player" | "ai";
-  winner?: Winner;
+  winner?: Winner | undefined;
   status: string;
   createdAt: number;
   updatedAt: number;
