@@ -1,6 +1,6 @@
 import { isShipSunk } from "../game/board";
 import type { InputRichBlock, InputRichMessage, RichMessageButton } from "../telegram/types";
-import { boardTable, fleetDock, fleetSummary, legendBlock, radarPicker } from "../ui/board";
+import { boardTable, fleetDock, legendBlock, radarPicker } from "../ui/board";
 import type { BattleIconTheme } from "../ui/icons";
 import { bold, callbackButton, disabledButton, richMessage, urlButton } from "../ui/rich";
 import { opponentFor, playerFor } from "./engine";
@@ -78,7 +78,7 @@ function matchRadar(state: MatchState, player: MatchPlayer, enemy: MatchPlayer):
     sectorCallback: (sector) => `v:${state.code}:${state.revision}:sector:${sector}`,
     cellCallback: (x, y) => `v:${state.code}:${state.revision}:shot:${x}:${y}`,
     backCallback: `v:${state.code}:${state.revision}:sector:x`,
-    title: "🎯 Боевой радар",
+    title: "🎯 Резервный прицел",
   });
 }
 
@@ -88,6 +88,9 @@ function renderBattle(state: MatchState, userId: number, icons: BattleIconTheme)
   const own = player.view === "own";
   const isTurn = state.turnUserId === userId;
   const title = own ? "🚢 Мой флот" : `🎯 ${enemy.name}`;
+  const directCellCallback = !own && isTurn
+    ? (x: number, y: number) => `v:${state.code}:${state.revision}:shot:${x}:${y}`
+    : undefined;
 
   const viewButtons: RichMessageButton[] = [
     player.view === "enemy"
@@ -97,6 +100,15 @@ function renderBattle(state: MatchState, userId: number, icons: BattleIconTheme)
       ? disabledButton("🚢 Мой флот")
       : callbackButton("🚢 Мой флот", `v:${state.code}:${state.revision}:view:o`, "primary"),
   ];
+
+  const fallback: InputRichBlock[] = !own && isTurn
+    ? [{
+        type: "details",
+        summary: "📱 Резервный прицел",
+        blocks: matchRadar(state, player, enemy),
+        ...(player.selectedSector !== undefined ? { is_open: true as const } : {}),
+      }]
+    : [];
 
   return richMessage([
     { type: "heading", size: 3, text: title },
@@ -108,9 +120,15 @@ function renderBattle(state: MatchState, userId: number, icons: BattleIconTheme)
       ],
     },
     ...(state.lastEvent ? [statusBlock(state.lastEvent)] : []),
-    boardTable({ board: own ? player.board : enemy.board, own, icons }),
+    boardTable({
+      board: own ? player.board : enemy.board,
+      own,
+      icons,
+      selectedCell: player.selectedCell,
+      ...(directCellCallback ? { directCellCallback } : {}),
+    }),
     { type: "paragraph", text: [bold("Ваш флот: "), fleetDock(player.board, icons)] },
-    ...(!own && isTurn ? matchRadar(state, player, enemy) : []),
+    ...fallback,
     { type: "divider" },
     { type: "buttons", buttons: viewButtons, align: "center" },
     {
@@ -119,7 +137,7 @@ function renderBattle(state: MatchState, userId: number, icons: BattleIconTheme)
       align: "center",
     },
     legendBlock(icons),
-    { type: "footer", text: `Комната ${state.code} · оба поля синхронизируются после каждого выстрела.` },
+    { type: "footer", text: `Комната ${state.code} · нажимайте клетки прямо на поле; резервный прицел остаётся доступен.` },
   ]);
 }
 
