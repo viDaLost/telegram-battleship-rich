@@ -5,6 +5,9 @@ export type RichTextEntity =
   | { type: "italic"; text: RichText }
   | { type: "underline"; text: RichText }
   | { type: "marked"; text: RichText }
+  | { type: "code"; text: RichText }
+  | { type: "subscript"; text: RichText }
+  | { type: "superscript"; text: RichText }
   | { type: "custom_emoji"; custom_emoji_id: string; alternative_text: string }
   | { type: "button"; button: RichMessageButton };
 
