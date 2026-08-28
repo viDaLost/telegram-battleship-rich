@@ -7,6 +7,17 @@ interface TelegramEnvelope<T> {
   error_code?: number;
 }
 
+export class TelegramApiError extends Error {
+  constructor(
+    public readonly method: string,
+    public readonly errorCode: number | undefined,
+    public readonly description: string,
+  ) {
+    super(`Telegram ${method} failed${errorCode ? ` (${errorCode})` : ""}: ${description}`);
+    this.name = "TelegramApiError";
+  }
+}
+
 export class TelegramApi {
   constructor(private readonly token: string) {}
 
@@ -19,7 +30,11 @@ export class TelegramApi {
 
     const json = (await response.json()) as TelegramEnvelope<T>;
     if (!response.ok || !json.ok || json.result === undefined) {
-      throw new Error(`Telegram ${method} failed: ${json.description ?? response.statusText}`);
+      throw new TelegramApiError(
+        method,
+        json.error_code,
+        json.description ?? response.statusText ?? "Unknown Telegram API error",
+      );
     }
     return json.result;
   }
