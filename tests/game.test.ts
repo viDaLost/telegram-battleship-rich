@@ -14,6 +14,7 @@ import { randomFleet } from "../src/game/placement";
 import type { BoardState } from "../src/game/types";
 import { createMatch, joinMatch, matchShot, setReady } from "../src/pvp/engine";
 import { renderMatch } from "../src/pvp/render";
+import type { InputRichBlock, RichText } from "../src/telegram/types";
 import { renderGame } from "../src/ui/render";
 
 function seeded(seed = 123456789): () => number {
@@ -42,8 +43,53 @@ function assertShipsDoNotTouch(board: BoardState): void {
 }
 
 function assertButtonLimits(blocks: ReturnType<typeof renderGame>["blocks"]): void {
-  const rows = blocks.filter((block) => block.type === "buttons");
-  assert.ok(rows.every((block) => block.type === "buttons" && block.buttons.length <= 8));
+  const visit = (items: InputRichBlock[]): void => {
+    for (const block of items) {
+      if (block.type === "buttons") assert.ok(block.buttons.length <= 8);
+      if (block.type === "details") visit(block.blocks);
+    }
+  };
+  visit(blocks);
+}
+
+function callbackDataFromRichText(text: RichText | undefined): string | undefined {
+  if (!text || typeof text === "string") return undefined;
+  if (Array.isArray(text)) {
+    for (const part of text) {
+      const value = callbackDataFromRichText(part);
+      if (value) return value;
+    }
+    return undefined;
+  }
+  if (text.type === "button") return text.button.callback_data;
+  if ("text" in text) return callbackDataFromRichText(text.text);
+  return undefined;
+}
+
+function tableCallbacks(blocks: InputRichBlock[], contains: string): string[] {
+  const table = blocks.find((block) => block.type === "table");
+  assert.ok(table && table.type === "table");
+  return table.cells
+    .flatMap((row) => row)
+    .map((cell) => callbackDataFromRichText(cell.text))
+    .filter((value): value is string => Boolean(value?.includes(contains)));
+}
+
+function nestedButtonCallbacks(blocks: InputRichBlock[], contains: string): string[] {
+  const values: string[] = [];
+  const visit = (items: InputRichBlock[]): void => {
+    for (const block of items) {
+      if (block.type === "buttons") {
+        for (const button of block.buttons) {
+          if (button.callback_data?.includes(contains)) values.push(button.callback_data);
+        }
+      } else if (block.type === "details") {
+        visit(block.blocks);
+      }
+    }
+  };
+  visit(blocks);
+  return values;
 }
 
 test("random fleets are complete, non-overlapping and non-touching", () => {
@@ -71,52 +117,38 @@ test("battle cannot start before full fleet", () => {
   assert.equal(state.phase, "placing");
 });
 
-test("iPhone-safe radar renders four sectors and then a 5x5 button grid", () => {
+test("direct Rich Text table controls are the default and radar remains a 5x5 fallback", () => {
   const state = createGame(2, Date.now(), seeded(8));
   autoPlacePlayer(state, seeded(9));
   assert.equal(startBattle(state), true);
-  assert.equal(state.interactionMode, "radar");
+  assert.equal(state.interactionMode, "direct");
 
   let rich = renderGame(state);
   const table = rich.blocks.find((block) => block.type === "table");
   assert.ok(table && table.type === "table");
   assert.equal(table.cells.length, 11);
   assert.ok(table.cells.every((row) => row.length === 11));
+  assert.equal(tableCallbacks(rich.blocks, ":s:").length, 100);
   assertButtonLimits(rich.blocks);
 
-  const sectorButtons = rich.blocks
-    .filter((block) => block.type === "buttons")
-    .flatMap((block) => (block.type === "buttons" ? block.buttons : []))
-    .filter((button) => button.callback_data?.includes(":g:"));
-  assert.equal(sectorButtons.length, 4);
+  setInteractionMode(state, "radar");
+  rich = renderGame(state);
+  assert.equal(nestedButtonCallbacks(rich.blocks, ":g:").length, 4);
 
   selectSector(state, 0);
   rich = renderGame(state);
-  const coordinateButtons = rich.blocks
-    .filter((block) => block.type === "buttons")
-    .flatMap((block) => (block.type === "buttons" ? block.buttons : []))
-    .filter((button) => button.callback_data?.includes(":c:"));
-  assert.equal(coordinateButtons.length, 25);
+  assert.equal(nestedButtonCallbacks(rich.blocks, ":c:").length, 25);
   assertButtonLimits(rich.blocks);
 });
 
-test("direct mode still embeds callback buttons in enemy table cells", () => {
+test("direct mode embeds callback buttons in enemy table cells", () => {
   const state = createGame(3, Date.now(), seeded(10));
   autoPlacePlayer(state, seeded(11));
   assert.equal(startBattle(state), true);
   setInteractionMode(state, "direct");
 
   const rich = renderGame(state);
-  const table = rich.blocks.find((block) => block.type === "table");
-  assert.ok(table && table.type === "table");
-
-  const hasInlineButton = table.cells.some((row) =>
-    row.some((cell) => {
-      const text = cell.text;
-      return typeof text === "object" && !Array.isArray(text) && text?.type === "button";
-    }),
-  );
-  assert.equal(hasInlineButton, true);
+  assert.equal(tableCallbacks(rich.blocks, ":s:").length, 100);
 });
 
 test("network room starts when both players are ready and alternates turn after a miss", () => {
@@ -142,19 +174,20 @@ test("network room starts when both players are ready and alternates turn after 
   assert.equal(match.turnUserId, 20);
 });
 
-test("network match rendering stays within RichBlockButtons limits", () => {
+test("network match uses direct table shots and keeps fallback controls within button limits", () => {
   const match = createMatch("ABCDEFGH", 10, "Host", Date.now(), seeded(30));
   joinMatch(match, 20, "Guest", seeded(31));
   setReady(match, 10, true);
   setReady(match, 20, true);
+
+  let rich = renderMatch(match, 10);
+  assert.equal(tableCallbacks(rich.blocks, ":shot:").length, 100);
+  assertButtonLimits(rich.blocks);
+
   match.host.selectedSector = 0;
-  const rich = renderMatch(match, 10);
-  const rows = rich.blocks.filter((block) => block.type === "buttons");
-  assert.ok(rows.every((block) => block.type === "buttons" && block.buttons.length <= 8));
-  const coordinateButtons = rows
-    .flatMap((block) => (block.type === "buttons" ? block.buttons : []))
-    .filter((button) => button.callback_data?.includes(":shot:"));
-  assert.equal(coordinateButtons.length, 25);
+  rich = renderMatch(match, 10);
+  assert.equal(nestedButtonCallbacks(rich.blocks, ":shot:").length, 25);
+  assertButtonLimits(rich.blocks);
 });
 
 test("seeded full games always terminate", () => {
