@@ -10,6 +10,9 @@ export const bold = (text: RichText): RichText => ({ type: "bold", text });
 export const italic = (text: RichText): RichText => ({ type: "italic", text });
 export const underline = (text: RichText): RichText => ({ type: "underline", text });
 export const marked = (text: RichText): RichText => ({ type: "marked", text });
+export const codeText = (text: RichText): RichText => ({ type: "code", text });
+export const subscript = (text: RichText): RichText => ({ type: "subscript", text });
+export const superscript = (text: RichText): RichText => ({ type: "superscript", text });
 export const customEmoji = (customEmojiId: string, alternativeText: string): RichText => ({
   type: "custom_emoji",
   custom_emoji_id: customEmojiId,
