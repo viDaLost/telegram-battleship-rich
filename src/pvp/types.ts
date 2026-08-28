@@ -14,6 +14,8 @@ export interface MatchPlayer {
   ready: boolean;
   view: ViewMode;
   selectedSector?: number | undefined;
+  /** Transient visual press state, formatted as `x,y`. */
+  selectedCell?: string | undefined;
   message?: MatchMessageRef | undefined;
 }
 
