@@ -17,6 +17,16 @@ import type { CallbackQuery, TelegramMessage } from "../telegram/types";
 import type { BattleIconTheme } from "../ui/icons";
 import { cloneMatch, createRoomCode, displayName, revisionAt, safeAnswer, safeEdit } from "./shared";
 
+const PRESS_PULSE_MS = 110;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+interface PersistOptions {
+  pulseCell?: { x: number; y: number };
+}
+
 async function editParticipants(api: TelegramApi, state: MatchState, icons: BattleIconTheme): Promise<void> {
   const players = [state.host, state.guest].filter((p): p is NonNullable<typeof p> => Boolean(p));
   await Promise.all(players.map(async (player) => {
@@ -32,6 +42,7 @@ async function persist(
   icons: BattleIconTheme,
   mutate: (draft: MatchState) => void,
   scope: "actor" | "all" = "all",
+  options: PersistOptions = {},
 ): Promise<void> {
   const draft = cloneMatch(current);
   const actor = playerFor(draft, query.from.id);
@@ -41,7 +52,20 @@ async function persist(
   draft.revision = current.revision + 1;
   draft.updatedAt = Date.now();
   if (!(await repo.compareAndSet(draft, current.revision))) return safeAnswer(api, query.id, "Бой уже обновился — нажмите ещё раз.");
+
   await safeAnswer(api, query.id);
+
+  if (options.pulseCell && query.message) {
+    const preview = cloneMatch(current);
+    const previewActor = playerFor(preview, query.from.id);
+    if (previewActor) {
+      previewActor.selectedCell = `${options.pulseCell.x},${options.pulseCell.y}`;
+      preview.lastEvent = "🎯 Цель выбрана…";
+      await safeEdit(api, query.message.chat.id, query.message.message_id, renderMatch(preview, query.from.id, icons));
+      await delay(PRESS_PULSE_MS);
+    }
+  }
+
   if (scope === "actor") {
     if (actor.message) await safeEdit(api, actor.message.chatId, actor.message.messageId, renderMatch(draft, actor.userId, icons));
   } else {
@@ -151,7 +175,16 @@ export async function handlePvpCallback(api: TelegramApi, repo: MatchRepository,
     const y = Number(parts[5]);
     if (![x, y].every((n) => Number.isInteger(n) && n >= 0 && n < 10)) return safeAnswer(api, query.id, "Некорректная клетка.");
     if (state.turnUserId !== query.from.id) return safeAnswer(api, query.id, "Сейчас ход соперника.");
-    return persist(repo, api, query, state, icons, (draft) => void matchShot(draft, query.from.id, { x, y }));
+    return persist(
+      repo,
+      api,
+      query,
+      state,
+      icons,
+      (draft) => void matchShot(draft, query.from.id, { x, y }),
+      "all",
+      { pulseCell: { x, y } },
+    );
   }
   if (action === "quit") return persist(repo, api, query, state, icons, (draft) => void surrenderMatch(draft, query.from.id));
   await safeAnswer(api, query.id, "Эта кнопка уже неактуальна.");
