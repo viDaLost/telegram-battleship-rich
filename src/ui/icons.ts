@@ -40,6 +40,27 @@ const FALLBACKS: Record<BattleIconKey, string> = {
   sunk: "✹",
 };
 
+// Telegram RichTextCustomEmoji.alternative_text must be a real emoji-like
+// fallback, not a board glyph such as "▰" or "·". Keep visual fallbacks
+// separate from protocol-safe custom emoji alternatives.
+const CUSTOM_EMOJI_ALTERNATIVES: Record<BattleIconKey, string> = {
+  ship4: "🚢",
+  ship3: "🚢",
+  ship2: "🚢",
+  ship1: "🚤",
+  ship_h_bow: "🚢",
+  ship_h_mid: "🚢",
+  ship_h_stern: "🚢",
+  ship_v_bow: "🚢",
+  ship_v_mid: "🚢",
+  ship_v_stern: "🚢",
+  ship_single: "🚤",
+  water: "🌊",
+  miss: "💧",
+  hit: "💥",
+  sunk: "🔥",
+};
+
 /**
  * Public Telegram custom_emoji_id values for the Battleship art pack.
  * They are safe to keep in source control (unlike the bot token) and make the
@@ -78,7 +99,7 @@ export function parseBattleIconTheme(raw?: string): BattleIconTheme {
 export function battleIcon(theme: BattleIconTheme, key: BattleIconKey): RichText {
   const fallback = FALLBACKS[key];
   const id = theme[key];
-  return id ? customEmoji(id, fallback) : fallback;
+  return id ? customEmoji(id, CUSTOM_EMOJI_ALTERNATIVES[key]) : fallback;
 }
 
 export function shipIcon(theme: BattleIconTheme, size: number): RichText {
