@@ -59,11 +59,51 @@ export interface TelegramUser {
   username?: string;
 }
 
+export interface TelegramFile {
+  file_id: string;
+  file_unique_id: string;
+  file_size?: number;
+}
+
+export interface TelegramPhotoSize extends TelegramFile {
+  width: number;
+  height: number;
+}
+
+export interface TelegramDocument extends TelegramFile {
+  file_name?: string;
+  mime_type?: string;
+}
+
+export interface TelegramSticker extends TelegramFile {
+  type: "regular" | "mask" | "custom_emoji";
+  width: number;
+  height: number;
+  is_animated: boolean;
+  is_video: boolean;
+  emoji?: string;
+  set_name?: string;
+  custom_emoji_id?: string;
+}
+
+export interface TelegramMessageEntity {
+  type: string;
+  offset: number;
+  length: number;
+  custom_emoji_id?: string;
+}
+
 export interface TelegramMessage {
   message_id: number;
   chat: { id: number; type?: string };
   from?: TelegramUser;
   text?: string;
+  caption?: string;
+  photo?: TelegramPhotoSize[];
+  document?: TelegramDocument;
+  sticker?: TelegramSticker;
+  entities?: TelegramMessageEntity[];
+  caption_entities?: TelegramMessageEntity[];
 }
 
 export interface CallbackQuery {
