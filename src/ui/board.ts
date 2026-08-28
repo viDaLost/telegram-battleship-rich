@@ -14,6 +14,13 @@ export interface BoardTableOptions {
   directCellCallback?: (x: number, y: number) => string;
 }
 
+function missIcon(icons: BattleIconTheme): RichText {
+  // The current art pack has a square water tile but no dedicated miss glyph.
+  // Use that square water tile for a confirmed miss. This also keeps the number
+  // of custom emoji entities low instead of drawing 100 animated water cells.
+  return icons.miss ? battleIcon(icons, "miss") : battleIcon(icons, "water");
+}
+
 export function boardTable({ board, own, icons = {}, directCellCallback }: BoardTableOptions): InputRichBlock {
   const rows: RichBlockTableCell[][] = [];
   rows.push([cell("", true), ...COLS.map((label) => cell(bold(label), true))]);
@@ -31,13 +38,15 @@ export function boardTable({ board, own, icons = {}, directCellCallback }: Board
       if (wasShot && ship) {
         content = battleIcon(icons, isShipSunk(board, ship) ? "sunk" : "hit");
       } else if (wasShot) {
-        content = battleIcon(icons, "miss");
+        content = missIcon(icons);
       } else if (own && ship) {
         content = shipCellIcon(icons, ship, coord);
       } else if (directCellCallback) {
-        content = inlineCallback(battleIcon(icons, "water"), directCellCallback(x, y));
+        // Keep untouched sea as a plain glyph. Apart from being cleaner, this
+        // avoids exceeding Telegram's dynamic per-message custom emoji limit.
+        content = inlineCallback("·", directCellCallback(x, y));
       } else {
-        content = battleIcon(icons, "water");
+        content = "·";
       }
       row.push(cell(content));
     }
@@ -69,7 +78,6 @@ export function fleetDock(board: BoardState, icons: BattleIconTheme = {}): RichT
   }
   return result;
 }
-
 
 const SECTORS = [
   { x0: 0, y0: 0, label: "↖ А–Д · 1–5", short: "А–Д / 1–5" },
@@ -135,9 +143,8 @@ export function legendBlock(icons: BattleIconTheme = {}): InputRichBlock {
       {
         type: "paragraph",
         text: [
-          battleIcon(icons, "water"),
-          " неизвестно   ",
-          battleIcon(icons, "miss"),
+          "· неизвестно   ",
+          missIcon(icons),
           " мимо   ",
           battleIcon(icons, "hit"),
           " попадание   ",
