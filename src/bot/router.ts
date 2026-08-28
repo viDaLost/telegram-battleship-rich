@@ -9,6 +9,85 @@ import { createNetworkMatch, handlePvpCallback, joinFromDeepLink, resumeNetworkM
 import { handlePveCallback } from "./pve";
 import { safeAnswer } from "./shared";
 
+function escapeHtml(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+function code(value: string): string {
+  return `<code>${escapeHtml(value)}</code>`;
+}
+
+function imageIdReply(msg: TelegramMessage): string | null {
+  const lines: string[] = [];
+  let hasCustomEmojiId = false;
+
+  if (msg.photo?.length) {
+    const largest = msg.photo.reduce((best, photo) =>
+      photo.width * photo.height > best.width * best.height ? photo : best,
+    );
+    lines.push(
+      "🖼 <b>Фото</b>",
+      `file_id: ${code(largest.file_id)}`,
+      `file_unique_id: ${code(largest.file_unique_id)}`,
+      `размер: ${largest.width}×${largest.height}`,
+    );
+  }
+
+  if (msg.document) {
+    const document = msg.document;
+    const looksLikeImage =
+      document.mime_type?.startsWith("image/") ||
+      /\.(png|webp|jpe?g|gif)$/i.test(document.file_name ?? "");
+    if (looksLikeImage) {
+      if (lines.length) lines.push("");
+      lines.push(
+        "📄 <b>Изображение как файл</b>",
+        `file_id: ${code(document.file_id)}`,
+        `file_unique_id: ${code(document.file_unique_id)}`,
+      );
+      if (document.file_name) lines.push(`имя: ${code(document.file_name)}`);
+      if (document.mime_type) lines.push(`тип: ${code(document.mime_type)}`);
+    }
+  }
+
+  if (msg.sticker) {
+    if (lines.length) lines.push("");
+    lines.push(
+      `🧩 <b>${msg.sticker.type === "custom_emoji" ? "Custom Emoji" : "Стикер"}</b>`,
+      `file_id: ${code(msg.sticker.file_id)}`,
+      `file_unique_id: ${code(msg.sticker.file_unique_id)}`,
+    );
+    if (msg.sticker.set_name) lines.push(`набор: ${code(msg.sticker.set_name)}`);
+    if (msg.sticker.custom_emoji_id) {
+      hasCustomEmojiId = true;
+      lines.push(`custom_emoji_id: ${code(msg.sticker.custom_emoji_id)}`);
+    }
+  }
+
+  const customEmojiIds = new Set<string>();
+  for (const entity of [...(msg.entities ?? []), ...(msg.caption_entities ?? [])]) {
+    if (entity.type === "custom_emoji" && entity.custom_emoji_id) customEmojiIds.add(entity.custom_emoji_id);
+  }
+  if (customEmojiIds.size) {
+    hasCustomEmojiId = true;
+    if (lines.length) lines.push("");
+    lines.push("✨ <b>Custom Emoji ID</b>");
+    for (const id of customEmojiIds) lines.push(code(id));
+  }
+
+  if (!lines.length) return null;
+
+  lines.push("");
+  if (hasCustomEmojiId) {
+    lines.push("✅ Это <b>custom_emoji_id</b>, который можно добавить в <code>SHIP_EMOJI_IDS</code>.");
+  } else {
+    lines.push(
+      "ℹ️ Это Telegram file ID. Для оформления поля кораблями нужен <b>custom_emoji_id</b>: сначала добавьте картинку в набор Custom Emoji, затем отправьте сам эмодзи этому боту.",
+    );
+  }
+  return lines.join("\n");
+}
+
 async function home(api: TelegramApi, games: GameRepository, matches: MatchRepository, chatId: number, userId: number, editMessageId?: number): Promise<void> {
   const [game, match] = await Promise.all([games.get(userId), matches.getByUser(userId)]);
   const content = renderHome({
@@ -22,6 +101,13 @@ async function home(api: TelegramApi, games: GameRepository, matches: MatchRepos
 async function message(api: TelegramApi, games: GameRepository, matches: MatchRepository, msg: TelegramMessage, icons: BattleIconTheme): Promise<void> {
   const userId = msg.from?.id;
   if (!userId) return;
+
+  const idReply = imageIdReply(msg);
+  if (idReply) {
+    await api.sendTextMessage(msg.chat.id, idReply, msg.message_id);
+    return;
+  }
+
   const tokens = (msg.text?.trim() ?? "").split(/\s+/);
   const command = (tokens[0] ?? "").split("@", 1)[0] ?? "";
   if (!["/start", "/new", "/help"].includes(command)) return;
